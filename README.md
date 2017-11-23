@@ -1,6 +1,6 @@
 # HyperDB
 
-## A search tree based storage structure
+## A search tree based storage structure or hash algorithm
 
 
 ```
