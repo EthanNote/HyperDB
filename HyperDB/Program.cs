@@ -11,6 +11,12 @@ namespace HyperDB
     {
         static void Main(string[] args)
         {
+            Console.WriteLine("Test program");
+
+            Console.WriteLine("Creating manager:");
+            DBManager db = new DBManager(4, 2);
+            db.Insert(new int[] { 2, 11 }, 0);
+
         }
     }
 
@@ -37,28 +43,52 @@ namespace HyperDB
         public bool HasParent { get { return Parent != null; } }
 
         public int Index { get; private set; }
+        public int Level { get; private set; }
         public DBNode Parent { get; private set; }
 
         public void SetParent(DBNode parent, int id)
         {
-            if(parent!=null && id>=0 && id<Manager.DivisionCount)
-            Parent = parent;
+            if (parent != null && id >= 0 && id < Manager.DivisionCount)
+            {
+                Parent = parent;
+                Parent.ChildNodes[id] = this;
+                Index = id;
+                Level = Parent.Level - 1;
+                Keys = Manager.CalcChildKeys(parent.Keys, parent.Level, id);
+            }
         }
 
         public virtual void OnCreate(int[] keys, int level, object userData) { }
         public virtual void OnDelete(int[] keys, int level, object userData) { }
         public virtual void OnSubDivision(int[][] childKeys, int childLevel, object userData) { }
 
-        public DBNode(DBManager manager)
+        public DBNode(DBManager manager, int level = -1)
         {
             this.Manager = manager;
             this.ChildNodes = new DBNode[manager.DivisionCount];
             Index = -1;
             Parent = null;
+            Level = level;
+        }
+
+        public int[] Keys { get; set; }
+        public void UpdateChildKeys()
+        {
+            for (int i = 0; i < ChildCount; i++)
+                if (ChildNodes[i] != null)
+                    ChildNodes[i].Keys = Manager.CalcChildKeys(Keys, Level, i);
+        }
+
+        public void UpdateChildKeysRecursively()
+        {
+            UpdateChildKeys();
+            for (int i = 0; i < ChildCount; i++)
+                if (ChildNodes[i] != null)
+                    ChildNodes[i].UpdateChildKeysRecursively();
         }
 
     }
-    
+
 
     public class QueryResult
     {
@@ -84,16 +114,42 @@ namespace HyperDB
         /// <summary>
         /// Uplimit number of child nodes of a node
         /// </summary>
-        public int DivisionCount { get{ return 1 << (Dimension - 1); } }
+        public int DivisionCount { get { return 1 << Dimension; } }
+
+        DBNode root;
+        public DBNode Root
+        {
+            get
+            {
+                if (root == null)
+                {
+                    root = new DBNode(this, MaxLevel);
+                    root.Keys = new int[Dimension];
+
+                    for (int i = 0; i < Dimension; i++)
+                        root.Keys[i] = 0;
+                }
+                return root;
+            }
+        }
 
         /// <summary>
         /// 
         /// </summary>
         public int MaxLevel { get; private set; }
+        public DBManager(int maxLevel, int dimension, Type nodeType = null)
+        {
+            MaxLevel = maxLevel;
+            Dimension = dimension;
+            this.nodeType = nodeType;
+        }
 
+        Type nodeType = null;
         public DBNode CreateNode()
         {
-            return new DBNode(this);
+            if (nodeType == null)
+                return new DBNode(this);
+            return (DBNode)Activator.CreateInstance(nodeType, this);
         }
 
         /// <summary>
@@ -117,11 +173,23 @@ namespace HyperDB
         /// <returns></returns>
         public int GetLevelIndex(int[] keys, int level)
         {
-            int size = DivisionCount;
+            int size = Dimension;
             int result = 0;
             for (int i = 0; i < size; i++)
             {
                 result |= ((keys[i] >> level) & 1) << i;
+            }
+            return result;
+        }
+
+        public int[] CalcChildKeys(int[] parentKeys, int parentLevel, int childIndex)
+        {
+            CheckKeysSize(parentKeys);
+            int[] result = new int[Dimension];
+            for (int i = 0; i < Dimension; i++)
+            {
+                result[i] = (((childIndex >> i) & 1) << (parentLevel - 1)) | parentKeys[i];
+                Console.WriteLine(String.Format("{0} - {1} {2} -> {3}", i, ((childIndex >> i) & 1) << (parentLevel - 1), parentKeys[i], result[i]));
             }
             return result;
         }
@@ -144,15 +212,20 @@ namespace HyperDB
             return Search(child, rootLevel - 1, keys);
         }
 
+
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="root"></param>
-        /// <param name="rootLevel"></param>
         /// <param name="keys"></param>
         /// <param name="insertLevel"></param>
+        /// <param name="userData"></param>
         /// <returns></returns>
-        public QueryResult Insert(DBNode root, int rootLevel, int[] keys, int insertLevel, object userData=null)
+        public QueryResult Insert(int[] keys, int insertLevel, object userData = null)
+        {
+            return Insert(Root, Root.Level, keys, insertLevel, userData);
+        }
+
+        QueryResult Insert(DBNode root, int rootLevel, int[] keys, int insertLevel, object userData = null)
         {
             if (rootLevel < insertLevel)
             {
@@ -162,20 +235,30 @@ namespace HyperDB
             {
                 throw new DBInsertNodeExistException();
             }
-            
+
             int index = GetLevelIndex(keys, rootLevel - 1);
             //Debug.Assert(rootLevel >= insertLevel);
-            
 
-            if (root.ChildNodes[index] == null && rootLevel == insertLevel + 1) //Insert success
-            {
-                var node = root.ChildNodes[index] = CreateNode();
-                node.OnCreate(keys, insertLevel, userData);
-                return new QueryResult(node, insertLevel);
-            }
+
+            //if (root.ChildNodes[index] == null && rootLevel == insertLevel + 1) //Insert success
+            //{
+            //    var node = CreateNode();
+            //    node.SetParent(root, index);
+            //    node.OnCreate(keys, insertLevel, userData);
+            //    return new QueryResult(node, insertLevel);
+            //}
 
             if (root.ChildNodes[index] == null)
-                root.ChildNodes[index] = CreateNode();
+            {
+                //root.ChildNodes[index] = CreateNode();
+                var node = CreateNode();
+                node.SetParent(root, index);
+                if (rootLevel == insertLevel + 1)
+                {
+                    node.OnCreate(keys, insertLevel, userData);
+                    return new QueryResult(node, insertLevel);
+                }
+            }
             return Insert(root.ChildNodes[index], rootLevel - 1, keys, insertLevel);
         }
         class DBTreeErrorException : Exception { }
@@ -187,13 +270,13 @@ namespace HyperDB
             {
                 throw new DBTreeErrorException();
             }
-            if (rootLevel == devideLevel) 
+            if (rootLevel == devideLevel)
                 return;
 
             //TODO: Check if Subdividable
             //Assume ture if no child
-                       
-            for(int i = 0; i < DivisionCount; i++)
+
+            for (int i = 0; i < DivisionCount; i++)
             {
                 var node = CreateNode();
                 node.OnCreate(keys, rootLevel - 1, userData);

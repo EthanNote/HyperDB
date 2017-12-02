@@ -1,0 +1,7 @@
+C:\Users\Administrator\source\repos\VS_Build\debug\HyperDB.exe.config
+C:\Users\Administrator\source\repos\VS_Build\debug\HyperDB.exe
+C:\Users\Administrator\source\repos\VS_Build\debug\HyperDB.pdb
+C:\Users\Administrator\source\repos\HyperDB\HyperDB\obj\Debug\HyperDB.csprojResolveAssemblyReference.cache
+C:\Users\Administrator\source\repos\HyperDB\HyperDB\obj\Debug\HyperDB.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\source\repos\HyperDB\HyperDB\obj\Debug\HyperDB.exe
+C:\Users\Administrator\source\repos\HyperDB\HyperDB\obj\Debug\HyperDB.pdb
