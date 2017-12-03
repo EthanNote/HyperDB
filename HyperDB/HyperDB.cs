@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace HyperDB
-{   
+{
 
     public class QueryResult
     {
@@ -113,21 +113,53 @@ namespace HyperDB
         }
 
         /// <summary>
-        /// Find the node with given key array
+        /// 
         /// </summary>
-        /// <param name="root"></param>
-        /// <param name="rootLevel"></param>
         /// <param name="keys"></param>
+        /// <param name="searchLevel"></param>
+        /// <param name="root"></param>
         /// <returns></returns>
-        public QueryResult Search(DBNode root, int rootLevel, int[] keys)
+        public SearchResult Search(int[] keys, int searchLevel, DBNode root = null)
         {
-            if (rootLevel == 0 || root.ChildNodes == null)
-                return new QueryResult(root, rootLevel);
+            if (root == null)
+                root = Root;
 
-            var child = root.ChildNodes[GetLevelIndex(keys, rootLevel - 1)];
-            if (child == null)
-                return new QueryResult(root, rootLevel);
-            return Search(child, rootLevel - 1, keys);
+            if (this != root.Manager)
+                return null;
+
+            CheckKeysSize(keys);
+
+            if (root.Level < searchLevel)
+                return null;
+
+            for (int i = 0; i < Dimension; i++)
+                if ((keys[i] >> root.Level) << root.Level != root.Keys[i])
+                    return null;
+
+            return Search_r(keys, searchLevel, root);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="keys"></param>
+        /// <param name="searchLevel"></param>
+        /// <param name="root"></param>
+        /// <returns></returns>
+        SearchResult Search_r(int[] keys, int searchLevel, DBNode root)
+        {
+            if (root.Level == searchLevel)
+                return new SearchResult(root, true);
+
+            int index = GetLevelIndex(keys, root.Level - 1);
+            if (root.ChildNodes[index] == null)
+                return new SearchResult(root, false);
+
+            var result = Search_r(keys, searchLevel, root.ChildNodes[index]);
+            if (result == null)
+                result = new SearchResult(root, false);
+            return result;
+
         }
 
 
@@ -157,15 +189,6 @@ namespace HyperDB
             int index = GetLevelIndex(keys, rootLevel - 1);
             //Debug.Assert(rootLevel >= insertLevel);
 
-
-            //if (root.ChildNodes[index] == null && rootLevel == insertLevel + 1) //Insert success
-            //{
-            //    var node = CreateNode();
-            //    node.SetParent(root, index);
-            //    node.OnCreate(keys, insertLevel, userData);
-            //    return new QueryResult(node, insertLevel);
-            //}
-
             if (root.ChildNodes[index] == null)
             {
                 //root.ChildNodes[index] = CreateNode();
@@ -181,6 +204,25 @@ namespace HyperDB
         }
         class DBTreeErrorException : Exception { }
         class DBInsertNodeExistException : Exception { }
+
+        public void Delete(DBNode node)
+        {
+            var parent = node.Parent;
+            int index = node.Index;
+            if (node.Manager == this && parent != null && parent.Manager == this)
+            {
+                if (parent.ChildNodes[index] != node)
+                    throw new DBTreeErrorException();
+                for (int i = 0; i < DivisionCount; i++)
+                    if (node.ChildNodes[i] != null)
+                        Delete(node.ChildNodes[i]);
+                node.OnDelete();
+                parent.ChildNodes[index] = null;
+                if (parent.ChildCount == 0)
+                    Delete(parent);
+            }
+        }
+
 
         public void SubDivide(DBNode root, int rootLevel, int[] keys, int devideLevel, object userData = null)
         {

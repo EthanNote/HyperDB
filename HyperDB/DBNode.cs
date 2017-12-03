@@ -45,7 +45,7 @@ namespace HyperDB
         }
 
         public virtual void OnCreate(int[] keys, int level, object userData) { }
-        public virtual void OnDelete(int[] keys, int level, object userData) { }
+        public virtual void OnDelete() { }
         public virtual void OnSubDivision(int[][] childKeys, int childLevel, object userData) { }
 
         public DBNode(DBManager manager, int level = -1)
@@ -55,6 +55,11 @@ namespace HyperDB
             Index = -1;
             Parent = null;
             Level = level;
+        }
+
+        public void Delete()
+        {
+            Manager.Delete(this);
         }
 
         public int[] Keys { get; set; }
