@@ -16,6 +16,7 @@ namespace HyperDB
             Console.WriteLine("Creating manager:");
             DBManager db = new DBManager(4, 2);
             db.Insert(new int[] { 2, 11 }, 0);
+            Console.WriteLine(db.Dump(db.Root));
             var s=db.Search(new int[] { 2, 11 }, 0);
             var n= db.Search(new int[] { 2, 10 }, 0);
 

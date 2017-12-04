@@ -44,7 +44,7 @@ namespace HyperDB
             }
         }
 
-        public virtual void OnCreate(int[] keys, int level, object userData) { }
+        public virtual void OnInsert(int[] keys, int level, object userData) { }
         public virtual void OnDelete() { }
         public virtual void OnSubDivision(int[][] childKeys, int childLevel, object userData) { }
 

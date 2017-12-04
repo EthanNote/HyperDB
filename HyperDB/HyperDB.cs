@@ -7,18 +7,6 @@ using System.Threading.Tasks;
 
 namespace HyperDB
 {
-
-    public class QueryResult
-    {
-        public DBNode node;
-        public int level;
-        public QueryResult(DBNode node, int level)
-        {
-            this.node = node;
-            this.level = level;
-        }
-    }
-
     /// <summary>
     /// Tree Manager
     /// </summary>
@@ -119,7 +107,7 @@ namespace HyperDB
         /// <param name="searchLevel"></param>
         /// <param name="root"></param>
         /// <returns></returns>
-        public SearchResult Search(int[] keys, int searchLevel, DBNode root = null)
+        public QueryResult Search(int[] keys, int searchLevel, DBNode root = null)
         {
             if (root == null)
                 root = Root;
@@ -146,18 +134,18 @@ namespace HyperDB
         /// <param name="searchLevel"></param>
         /// <param name="root"></param>
         /// <returns></returns>
-        SearchResult Search_r(int[] keys, int searchLevel, DBNode root)
+        QueryResult Search_r(int[] keys, int searchLevel, DBNode root)
         {
             if (root.Level == searchLevel)
-                return new SearchResult(root, true);
+                return new QueryResult(root, true);
 
             int index = GetLevelIndex(keys, root.Level - 1);
             if (root.ChildNodes[index] == null)
-                return new SearchResult(root, false);
+                return new QueryResult(root, false);
 
             var result = Search_r(keys, searchLevel, root.ChildNodes[index]);
             if (result == null)
-                result = new SearchResult(root, false);
+                result = new QueryResult(root, false);
             return result;
 
         }
@@ -172,21 +160,26 @@ namespace HyperDB
         /// <returns></returns>
         public QueryResult Insert(int[] keys, int insertLevel, object userData = null)
         {
-            return Insert(Root, Root.Level, keys, insertLevel, userData);
+            for (int i = 0; i < Dimension; i++)
+                if ((keys[i] >> Root.Level) << Root.Level != Root.Keys[i])
+                    return null;
+
+            return Insert(Root, keys, insertLevel, userData);
         }
 
-        QueryResult Insert(DBNode root, int rootLevel, int[] keys, int insertLevel, object userData = null)
+        QueryResult Insert(DBNode root, int[] keys, int insertLevel, object userData = null)
         {
-            if (rootLevel < insertLevel)
+            if (root.Level < insertLevel)
             {
-                throw new DBTreeErrorException();
+                return null;
             }
-            if (rootLevel == insertLevel) //Insertion fail
+            if (root.Level == insertLevel || root != Root && root.ChildCount == 0) //Insertion fail
             {
-                throw new DBInsertNodeExistException();
+                return new QueryResult(root, false);
+                //throw new DBInsertNodeExistException();
             }
 
-            int index = GetLevelIndex(keys, rootLevel - 1);
+            int index = GetLevelIndex(keys, root.Level - 1);
             //Debug.Assert(rootLevel >= insertLevel);
 
             if (root.ChildNodes[index] == null)
@@ -194,13 +187,13 @@ namespace HyperDB
                 //root.ChildNodes[index] = CreateNode();
                 var node = CreateNode();
                 node.SetParent(root, index);
-                if (rootLevel == insertLevel + 1)
+                if (root.Level == insertLevel + 1)
                 {
-                    node.OnCreate(keys, insertLevel, userData);
-                    return new QueryResult(node, insertLevel);
+                    node.OnInsert(keys, insertLevel, userData);
+                    return new QueryResult(node, true);
                 }
             }
-            return Insert(root.ChildNodes[index], rootLevel - 1, keys, insertLevel);
+            return Insert(root.ChildNodes[index], keys, insertLevel);
         }
         class DBTreeErrorException : Exception { }
         class DBInsertNodeExistException : Exception { }
@@ -239,12 +232,27 @@ namespace HyperDB
             for (int i = 0; i < DivisionCount; i++)
             {
                 var node = CreateNode();
-                node.OnCreate(keys, rootLevel - 1, userData);
+                node.OnInsert(keys, rootLevel - 1, userData);
                 node.SetParent(root, i);
             }
 
             int index = GetLevelIndex(keys, rootLevel - 1);
             SubDivide(root.ChildNodes[index], rootLevel - 1, keys, devideLevel, userData);
+        }
+
+        public string Dump(DBNode root, int indent = 0)
+        {
+           
+            var result = new String(' ', indent);
+            result += root.Level + " ";
+            result += root.Keys + "\n";
+
+            foreach (var c in root.ChildNodes)
+            {
+                if (c != null)
+                    result += Dump(c, indent + 1)+"\n";
+            }
+            return result;
         }
     }
 }
