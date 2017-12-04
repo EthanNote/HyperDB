@@ -236,27 +236,34 @@ namespace HyperDB
   
         }
  
-        public void SubDivide(DBNode root, int rootLevel, int[] keys, int devideLevel, object userData = null)
+        public void SubDivide(DBNode root, int[] keys, int divLevel, object userData = null)
         {
-            if (rootLevel < devideLevel)
-            {
-                throw new Exception();
-            }
-            if (rootLevel == devideLevel)
+            if (root.Level <= divLevel)
                 return;
 
-            //TODO: Check if Subdividable
-            //Assume ture if no child
+            for (int i = 0; i < Dimension; i++)
+                if ((keys[i] >> root.Level) << root.Level != root.Keys[i])
+                    return;
 
+            if (root.HasChild)
+                return;
+
+            SubDivide_R(root, keys, divLevel, userData);
+
+        }
+
+        void SubDivide_R(DBNode root, int[] keys, int divLevel, object userData = null)
+        {
+           
             for (int i = 0; i < DivisionCount; i++)
             {
                 var node = CreateNode();
-                node.OnInsert(keys, rootLevel - 1, userData);
+                node.OnInsert(keys, root.Level - 1, userData);
                 node.SetParent(root, i);
             }
 
-            int index = GetLevelIndex(keys, rootLevel - 1);
-            SubDivide(root.ChildNodes[index], rootLevel - 1, keys, devideLevel, userData);
+            int index = GetLevelIndex(keys, root.Level - 1);
+            SubDivide_R(root.ChildNodes[index], keys, divLevel, userData);
         }
 
         public string Dump(DBNode root, int indent = 0)
