@@ -44,6 +44,16 @@ namespace HyperDB
             }
         }
 
+        public void UnsetParent()
+        {
+            if (Parent != null && Index>0 && Index < Manager.DivisionCount && Parent.ChildNodes[Index]==this)
+            {
+                Parent.ChildNodes[Index] = null;
+            }
+            Parent = null;
+            Index = -1;
+        }
+
         public virtual void OnInsert(int[] keys, int level, object userData) { }
         public virtual void OnDelete() { }
         public virtual void OnSubDivision(int[][] childKeys, int childLevel, object userData) { }

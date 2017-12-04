@@ -95,7 +95,7 @@ namespace HyperDB
             for (int i = 0; i < Dimension; i++)
             {
                 result[i] = (((childIndex >> i) & 1) << (parentLevel - 1)) | parentKeys[i];
-                Console.WriteLine(String.Format("{0} - {1} {2} -> {3}", i, ((childIndex >> i) & 1) << (parentLevel - 1), parentKeys[i], result[i]));
+                //Console.WriteLine(String.Format("{0} - {1} {2} -> {3}", i, ((childIndex >> i) & 1) << (parentLevel - 1), parentKeys[i], result[i]));
             }
             return result;
         }
@@ -163,8 +163,18 @@ namespace HyperDB
             for (int i = 0; i < Dimension; i++)
                 if ((keys[i] >> Root.Level) << Root.Level != Root.Keys[i])
                     return null;
+            if (!Root.HasChild)
+                return Insert(Root, keys, insertLevel, userData);
 
-            return Insert(Root, keys, insertLevel, userData);
+            var s = Search(keys, insertLevel);
+            if (s != null && !s.Succeed && s.Result.HasChild)
+                return Insert(s.Result, keys, insertLevel, userData);
+            if (s == null)
+                return null;
+            if (s.Succeed)
+                return new QueryResult(s.Result, false, "Space in use");
+            return new QueryResult(s.Result, false, "Zone in use");
+
         }
 
         QueryResult Insert(DBNode root, int[] keys, int insertLevel, object userData = null)
@@ -173,7 +183,7 @@ namespace HyperDB
             {
                 return null;
             }
-            if (root.Level == insertLevel || root != Root && root.ChildCount == 0) //Insertion fail
+            if (root.Level == insertLevel) //Insertion fail
             {
                 return new QueryResult(root, false);
                 //throw new DBInsertNodeExistException();
@@ -195,33 +205,42 @@ namespace HyperDB
             }
             return Insert(root.ChildNodes[index], keys, insertLevel);
         }
-        class DBTreeErrorException : Exception { }
-        class DBInsertNodeExistException : Exception { }
-
+        //class DBTreeErrorException : Exception { }
+        //class DBInsertNodeExistException : Exception { }
         public void Delete(DBNode node)
         {
-            var parent = node.Parent;
-            int index = node.Index;
-            if (node.Manager == this && parent != null && parent.Manager == this)
+            if (node.Manager != this || node.Parent == null || node.Parent.Manager != this)
+                return;
+            var endnode = node.Parent;
+            DeleteTree(node);
+
+            while (endnode != null && !endnode.HasChild)
             {
-                if (parent.ChildNodes[index] != node)
-                    throw new DBTreeErrorException();
-                for (int i = 0; i < DivisionCount; i++)
-                    if (node.ChildNodes[i] != null)
-                        Delete(node.ChildNodes[i]);
-                node.OnDelete();
-                parent.ChildNodes[index] = null;
-                if (parent.ChildCount == 0)
-                    Delete(parent);
+                var parent = endnode.Parent;
+                endnode.UnsetParent();
+                endnode = parent;
             }
+
         }
 
 
+        public void DeleteTree(DBNode node/*, bool checkManager=true*/)
+        {
+            for (int i = 0; i < DivisionCount; i++)
+                if (node.ChildNodes[i] != null)
+                    Delete(node.ChildNodes[i]);
+
+            node.OnDelete();
+            node.UnsetParent();
+
+  
+        }
+ 
         public void SubDivide(DBNode root, int rootLevel, int[] keys, int devideLevel, object userData = null)
         {
             if (rootLevel < devideLevel)
             {
-                throw new DBTreeErrorException();
+                throw new Exception();
             }
             if (rootLevel == devideLevel)
                 return;
@@ -242,15 +261,22 @@ namespace HyperDB
 
         public string Dump(DBNode root, int indent = 0)
         {
-           
+
             var result = new String(' ', indent);
-            result += root.Level + " ";
-            result += root.Keys + "\n";
+            result += root.Level + "_" + root.Index + " ";
+
+            result += "[ ";
+            foreach (var k in root.Keys)
+                result += k + ", ";
+            result = result.Substring(0, result.Length - 2) + " ]";
+            if (!root.HasChild)
+                result += " => [ " + root.ToString() + " ]";
+            result += "\n";
 
             foreach (var c in root.ChildNodes)
             {
                 if (c != null)
-                    result += Dump(c, indent + 1)+"\n";
+                    result += Dump(c, indent + 1);
             }
             return result;
         }
