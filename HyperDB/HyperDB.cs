@@ -43,19 +43,31 @@ namespace HyperDB
         /// 
         /// </summary>
         public int MaxLevel { get; private set; }
-        public DBManager(int maxLevel, int dimension, Type nodeType = null)
+        public DBManager(int maxLevel, int dimension, Type leafNodeType = null)
         {
             MaxLevel = maxLevel;
             Dimension = dimension;
-            this.nodeType = nodeType;
+
+            if (leafNodeType == typeof(DBNode))
+                leafNodeType = null;
+
+            if (leafNodeType != null && !leafNodeType.IsSubclassOf(typeof(DBNode)))
+                throw new TypeLoadException();
+
+            this.leafNodeType = leafNodeType;
         }
 
-        Type nodeType = null;
+        Type leafNodeType = null;
+        public DBNode CreateLeafNode()
+        {
+            if (leafNodeType == null)
+                return new DBNode(this);
+            return (DBNode)Activator.CreateInstance(leafNodeType, this, -1);
+        }
+
         public DBNode CreateNode()
         {
-            if (nodeType == null)
-                return new DBNode(this);
-            return (DBNode)Activator.CreateInstance(nodeType, this);
+            return new DBNode(this);
         }
 
         /// <summary>
@@ -195,12 +207,17 @@ namespace HyperDB
             if (root.ChildNodes[index] == null)
             {
                 //root.ChildNodes[index] = CreateNode();
-                var node = CreateNode();
-                node.SetParent(root, index);
                 if (root.Level == insertLevel + 1)
                 {
-                    node.OnInsert(keys, insertLevel, userData);
+                    var node = CreateLeafNode();
+                    node.SetParent(root, index);
+                    node.OnInsert(userData);
                     return new QueryResult(node, true);
+                }
+                else
+                {
+                    var node = CreateNode();
+                    node.SetParent(root, index);
                 }
             }
             return Insert(root.ChildNodes[index], keys, insertLevel);
@@ -233,37 +250,99 @@ namespace HyperDB
             node.OnDelete();
             node.UnsetParent();
 
-  
+
         }
- 
-        public void SubDivide(DBNode root, int[] keys, int divLevel, object userData = null)
+
+        bool SubDividable(DBNode root, int[] keys, int divLevel)
         {
             if (root.Level <= divLevel)
-                return;
+                return false;
 
             for (int i = 0; i < Dimension; i++)
                 if ((keys[i] >> root.Level) << root.Level != root.Keys[i])
-                    return;
+                    return false;
 
             if (root.HasChild)
-                return;
+                return false;
 
-            SubDivide_R(root, keys, divLevel, userData);
+            return true;
 
         }
 
-        void SubDivide_R(DBNode root, int[] keys, int divLevel, object userData = null)
+        public void SubDivide(DBNode root, int[] keys, int divLevel, object userData = null)
         {
-           
+            if (keys != null && SubDividable(root, keys, divLevel))
+                SingleSubDivide_R(root, keys, divLevel, userData);
+            if (keys == null && SubDividable(root, root.Keys, divLevel))
+                FullSubDivide(root, divLevel, userData);
+        }
+
+        void SingleSubDivide_R(DBNode root, int[] keys, int divLevel, object userData)
+        {
+            int index = GetLevelIndex(keys, root.Level - 1);
+
             for (int i = 0; i < DivisionCount; i++)
             {
-                var node = CreateNode();
-                node.OnInsert(keys, root.Level - 1, userData);
-                node.SetParent(root, i);
-            }
+                if (index != i || root.Level == divLevel + 1)
+                {
+                    var node = CreateLeafNode();
+                    node.SetParent(root, i);
+                    node.OnInsert(userData);
+                }
+                else
+                {
+                    var node = CreateNode();
+                    node.SetParent(root, i);
+                    node.OnInsert(userData);
+                    SingleSubDivide_R(node, keys, divLevel, userData);
+                }
 
+            }
+        }
+
+        void FullSubDivide(DBNode root, int divLevel, object userData)
+        {
+            if (root.Level > divLevel + 1)
+                for (int i = 0; i < DivisionCount; i++)
+                {
+                    var node = CreateNode();
+                    //node.OnInsert(keys, root.Level - 1, userData);
+                    node.SetParent(root, i);
+                    FullSubDivide(node, divLevel, userData);
+                }
+            else
+                for (int i = 0; i < DivisionCount; i++)
+                {
+                    var node = CreateLeafNode();
+                    node.SetParent(root, i);
+                    node.OnInsert(userData);
+                }
+        }
+        public void SubExclude(DBNode root, int[] keys, int divLevel, object userData=null)
+        {
+            if (SubDividable(root, keys, divLevel))
+                SubExclude_R(root, keys, divLevel, userData);
+        }
+        void SubExclude_R(DBNode root, int[] keys, int divLevel, object userData)
+        {
             int index = GetLevelIndex(keys, root.Level - 1);
-            SubDivide_R(root.ChildNodes[index], keys, divLevel, userData);
+
+            for (int i = 0; i < DivisionCount; i++)
+            {
+                if (index != i)
+                {
+                    var node = CreateLeafNode();
+                    node.SetParent(root, i);
+                    node.OnInsert(userData);
+                }
+                else if (root.Level > divLevel + 1)
+                {
+                    var node = CreateNode();
+                    node.SetParent(root, i);
+                    SubExclude_R(node, keys, divLevel, userData);
+                }
+
+            }
         }
 
         public string Dump(DBNode root, int indent = 0)
